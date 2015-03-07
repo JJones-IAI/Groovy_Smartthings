@@ -1,0 +1,161 @@
+/**
+ *  FireDoor Alarm and Motion
+ *
+ *  Copyright 2015 Justin Jones
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ *
+ */
+definition(
+    name: "FireDoor Alarm and Motion",
+    namespace: "jbiscuit1",
+    author: "Justin Jones",
+    description: "This is my First Smart Things App",
+    category: "My Apps",
+    iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
+    iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
+    iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
+
+
+//Alarm Install Preferences
+//Preferences are app variables that are selected during installation and configuration of the app
+preferences {
+    // What door contact sensors will be used by this app to trigger the alarm?
+    section ("When the door opens/closes...") {
+        input "doorContact1", "capability.contactSensor", multiple: true,
+              title: "Where?";
+    }
+    
+    // What motion sensors will be used by this app to trigger the alarm?
+    section ("When their is motion in the room...") {
+        input "roomMotion1", "capability.motionSensor", multiple: true,
+              title: "Where?";
+    }
+
+    // What alarm siren will be triggered by this app when the alarm is tripped?
+    section ("Turn on/off an alarm...") {
+        input "alarmSiren1", "capability.alarm"
+    }
+
+	// Set your alarm timer default variables    
+    section("Timer Settings...") {
+        input "sirenAlarmTime", "decimal", title: "Alarm Threshold (min.)", required: false
+        input "sirenArmDelayTime", "decimal", title: "Siren Arm Delay (min.)", required: false
+        input "sirenDisarmDelayTime", "decimal", title: "Siren Disarm Delay (min.)", required: false
+        input "sirenBellDelayTime", "decimal", title: "Siren Bell Delay (min.)", required: false
+	}
+    
+    //When notification is required, who should be notified.  Enter up to 10 phone numbers
+    section( "Notifications" ) {
+        input "sendPushMessage", "enum", title: "Send a push notification?", metadata:[values:["Yes","No"]], required:false
+        input "phone1", "phone", title: "Send a Text Message?", required: false
+        input "phone2", "phone", title: "Send a Text Message?", required: false
+        input "phone3", "phone", title: "Send a Text Message?", required: false
+        input "phone4", "phone", title: "Send a Text Message?", required: false
+        input "phone5", "phone", title: "Send a Text Message?", required: false
+        input "phone6", "phone", title: "Send a Text Message?", required: false
+        input "phone7", "phone", title: "Send a Text Message?", required: false
+        input "phone8", "phone", title: "Send a Text Message?", required: false
+        input "phone9", "phone", title: "Send a Text Message?", required: false
+        input "phone10", "phone", title: "Send a Text Message?", required: false
+	}
+}
+
+
+//Initialization Instructions
+// When the app is initialized or the settings are updated, this code block is triggered
+def installed() {
+	log.debug "Installed with settings: ${settings}"
+
+	initialize()
+}
+
+def updated() {
+	log.debug "Updated with settings: ${settings}"
+
+	unsubscribe()
+	initialize()
+}
+
+def initialize() {
+    subscribe(doorContactSensors, "contact", contactHandler);
+    subscribe(roomMotionSensors, "motion", motionHandler);
+    subscribe(alarmSiren1, "alarm",alarmHandler);
+}
+
+
+//Event Handlers
+//Execution Logic lives here.
+// alarmHandler is called when there is an event on an alarm siren.
+def alarmHandler(evt) {
+    log.debug "$evt.value";
+    if (evt.value != "off") {
+        def sirenTime = findSirenTimeThreshold();
+        def currentMotionState = roomMotionSensors.currentState("motion").value;
+        log.debug "Alarm Type: $evt.value Active";
+        log.debug "Motion Value: $currentMotionState";
+        if (currentMotionState != "active") {
+        	runIn(sirenTime, "resetSiren");
+            log.debug "Alarm: Reset siren in $sirenTime Seconds";
+		}
+        else {
+        	log.debug "Alarm: Motion Alarm not resetting";
+        }
+    } 
+}
+
+//contactHandler handles all door contact sensor events
+def contactHandler(evt) {
+    log.debug "$evt.value"
+    if (evt.value == "open") {
+        alarmSiren1.both();
+
+    } 
+}
+
+//motionHandler handles all motion sensor events
+def motionHandler(evt) {
+    log.debug "$evt.value"
+    if (evt.value == "active") {
+        alarmSiren1.both();
+    }
+    	
+}
+
+
+//The reset siren event handler is triggered by the alarmHandler to reset the alarm if it is tripped.  After a certain length of time.
+def resetSiren() {
+	log.debug("Turn off Alarm and reset");
+    alarmSiren1.off();
+}
+
+
+//Functions and Methods
+
+
+private send(msg) {
+    if ( sendPushMessage != "No" ) {
+        log.debug( "sending push message" )
+        sendPush( msg )
+    }
+
+    if ( phone ) {
+        log.debug( "sending text message" )
+        sendSms( phone, msg )
+    }
+
+    log.debug msg
+}
+
+private findSirenTimeThreshold() {
+    def result = (sirenAlarmTime != null && sirenAlarmTime != "") ? sirenAlarmTime : 1;
+    result = (int) (result * 60);
+    return(result);
+}
